@@ -27,22 +27,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5;}
 .badge.on .dot{opacity:1;animation:pulse 2s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-
-.ws-row{display:flex;gap:8px;align-items:center;padding:0 18px 6px;flex-shrink:0;}
-.ws-input{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:7px 11px;color:var(--text);font-size:12px;font-family:'SF Mono','Fira Code',monospace;outline:none;min-width:0;}
-.ws-input:focus{border-color:var(--green);}
-
-.room-row{display:flex;gap:8px;align-items:center;padding:0 18px 10px;flex-shrink:0;}
-.room-label{font-size:12px;color:var(--muted);white-space:nowrap;}
-.room-input{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:8px 11px;color:var(--text);font-size:14px;font-weight:600;font-family:'SF Mono','Fira Code',monospace;outline:none;min-width:0;}
-.room-input:focus{border-color:var(--green);}
-.room-btn{padding:8px 14px;border-radius:9px;border:1px solid var(--green);background:var(--green);color:#000;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
-.room-btn:active{opacity:.8;}
+.room-chip{font-size:11px;color:var(--muted);padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-family:'SF Mono','Fira Code',monospace;}
 
 .vf-wrap{flex:1;position:relative;overflow:hidden;min-height:0;}
 #video{width:100%;height:100%;object-fit:cover;display:block;}
 #canvas{display:none;}
-#debugCanvas{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;}
 .vf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
 .scan-box{position:relative;width:min(72vw,260px);aspect-ratio:1;}
 .scan-box::before,.scan-box::after,.scan-box .c,.scan-box .d{content:'';position:absolute;width:26px;height:26px;border:2.5px solid var(--green);}
@@ -86,17 +75,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 <div class="app">
   <div class="topbar">
     <div class="wordmark">Scan<em>·</em>it</div>
-    <div class="badge" id="badge"><div class="dot"></div><span id="badgeLabel">Offline</span></div>
-  </div>
-
-  <div class="ws-row">
-    <input class="ws-input" id="wsInput" placeholder="wss://argati-scanner.lavdrim-m.workers.dev" spellcheck="false" autocomplete="off">
-  </div>
-
-  <div class="room-row">
-    <span class="room-label">Room</span>
-    <input class="room-input" id="roomInput" maxlength="20" spellcheck="false" autocomplete="off" placeholder="work">
-    <button class="room-btn" onclick="connectWS()">Connect</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="room-chip" id="roomChip">···</div>
+      <div class="badge" id="badge"><div class="dot"></div><span id="badgeLabel">Offline</span></div>
+    </div>
   </div>
 
   <div class="vf-wrap">
@@ -141,16 +123,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-
 
 <script src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
 <script>
-var WS_KEY   = 'scanit_ws';
-var ROOM_KEY = 'scanit_room';
+// ── Hardcoded config — never needs to change ──
+var WS_URL = 'wss://argati-scanner.lavdrim-m.workers.dev';
 
-var wsInput   = document.getElementById('wsInput');
-var roomInput = document.getElementById('roomInput');
-wsInput.value   = localStorage.getItem(WS_KEY)   || 'wss://argati-scanner.lavdrim-m.workers.dev';
-roomInput.value = localStorage.getItem(ROOM_KEY) || 'work';
-wsInput.addEventListener('change',   function(){ localStorage.setItem(WS_KEY, wsInput.value.trim()); });
-roomInput.addEventListener('change', function(){ localStorage.setItem(ROOM_KEY, roomInput.value.trim()); });
-roomInput.addEventListener('input',  function(){ roomInput.value = roomInput.value.replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase(); });
+// ── Room: auto-generated per device, persisted forever ──
+// Each phone gets a stable unique room code automatically.
+// Team member opens the app, their room shows in the top bar.
+// They tell their laptop colleague "my room is abc123" once — done forever.
+function getRoom() {
+  var key = 'scanit_device_room';
+  var r = localStorage.getItem(key);
+  if (!r) {
+    // Generate short memorable code: 6 alphanumeric chars
+    r = Math.random().toString(36).slice(2, 8);
+    localStorage.setItem(key, r);
+  }
+  return r;
+}
+
+var ROOM = getRoom();
+document.getElementById('roomChip').textContent = ROOM;
 
 var ws = null, wsRetry = null;
 var active = false, rafId = null;
@@ -161,20 +153,21 @@ var ctx    = canvas.getContext('2d', { willReadFrequently: true });
 var lastScan = 0;
 var readers = [];
 
-// ── WebSocket ──
+// ── WebSocket — auto connect, auto retry ──
 function connectWS() {
-  var url  = wsInput.value.trim();
-  var room = roomInput.value.trim();
-  if (!url || !room) { alert('Enter WS URL and room.'); return; }
-  localStorage.setItem(WS_KEY, url);
-  localStorage.setItem(ROOM_KEY, room);
+  if (ws && ws.readyState < 2) return;
+  clearTimeout(wsRetry);
   if (ws) { try { ws.close(); } catch(e){} }
-  ws = new WebSocket(url + '/room/' + encodeURIComponent(room) + '?role=scanner');
-  ws.onopen  = function(){ setConn(true); };
+  ws = new WebSocket(WS_URL + '/room/' + encodeURIComponent(ROOM) + '?role=scanner');
+  ws.onopen  = function(){ setConn(true); ping(); };
   ws.onclose = function(){ setConn(false); wsRetry = setTimeout(connectWS, 3500); };
   ws.onerror = function(){ setConn(false); };
   ws.onmessage = function(e){ try { var d=JSON.parse(e.data); if(d.peers!==undefined) setConn(true,d.peers); } catch(ex){} };
-  setInterval(function(){ if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:'ping'})); }, 25000);
+}
+
+function ping() {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'ping'}));
+  setTimeout(ping, 25000);
 }
 
 function setConn(on, peers) {
@@ -183,7 +176,7 @@ function setConn(on, peers) {
   l.textContent = on ? ((peers||1)-1>0 ? ((peers-1)+' laptop') : 'Connected') : 'Offline';
 }
 
-// ── Build readers — multiple strategies ──
+// ── Readers ──
 function buildReaders() {
   readers = [];
   var formats = [
@@ -195,85 +188,35 @@ function buildReaders() {
     ZXing.BarcodeFormat.QR_CODE,  ZXing.BarcodeFormat.PDF_417,
     ZXing.BarcodeFormat.AZTEC,    ZXing.BarcodeFormat.RSS_14,
   ];
-
-  // Reader 1: TRY_HARDER on
   var h1 = new Map();
   h1.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
   h1.set(ZXing.DecodeHintType.TRY_HARDER, true);
   readers.push(new ZXing.MultiFormatReader(h1));
-
-  // Reader 2: TRY_HARDER off (faster, sometimes catches what harder misses)
   var h2 = new Map();
   h2.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
   h2.set(ZXing.DecodeHintType.TRY_HARDER, false);
   readers.push(new ZXing.MultiFormatReader(h2));
 }
 
-// ── Convert RGBA ImageData to grayscale Uint8ClampedArray ──
-// This is the fix: ZXing RGBLuminanceSource expects R,G,B,A packed
-// but iOS sometimes gives different color profiles. We normalise manually.
 function toGrayscale(imageData) {
-  var src  = imageData.data;
-  var len  = src.length / 4;
-  var gray = new Uint8ClampedArray(len);
-  for (var i = 0; i < len; i++) {
-    var r = src[i*4];
-    var g = src[i*4+1];
-    var b = src[i*4+2];
-    // Luminance formula (perceptual)
-    gray[i] = (r * 77 + g * 150 + b * 29) >> 8;
-  }
+  var src = imageData.data, len = src.length/4, gray = new Uint8ClampedArray(len);
+  for (var i=0;i<len;i++) gray[i]=(src[i*4]*77+src[i*4+1]*150+src[i*4+2]*29)>>8;
   return gray;
 }
 
-// ── Crop center of frame — barcodes are usually in the middle ──
-function cropCenter(fullW, fullH, ratio) {
-  ratio = ratio || 0.7;
-  var cw = Math.floor(fullW * ratio);
-  var ch = Math.floor(fullH * ratio);
-  var cx = Math.floor((fullW - cw) / 2);
-  var cy = Math.floor((fullH - ch) / 2);
-  return { x: cx, y: cy, w: cw, h: ch };
-}
-
-// ── Try decode with multiple strategies ──
 function tryDecode(w, h, imageData) {
-  // Strategy 1: full frame, RGBLuminanceSource
-  for (var ri = 0; ri < readers.length; ri++) {
-    try {
-      var lum1 = new ZXing.RGBLuminanceSource(imageData.data, w, h);
-      var bin1 = new ZXing.HybridBinarizer(lum1);
-      var bmp1 = new ZXing.BinaryBitmap(bin1);
-      var res1 = readers[ri].decode(bmp1);
-      if (res1) return res1;
-    } catch(e) {}
+  for (var ri=0;ri<readers.length;ri++) {
+    try { var r=readers[ri].decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(imageData.data,w,h)))); if(r) return r; } catch(e){}
   }
-
-  // Strategy 2: grayscale conversion, full frame
-  var gray = toGrayscale(imageData);
-  for (var ri2 = 0; ri2 < readers.length; ri2++) {
-    try {
-      var lum2 = new ZXing.RGBLuminanceSource(gray, w, h);
-      var bin2 = new ZXing.HybridBinarizer(lum2);
-      var bmp2 = new ZXing.BinaryBitmap(bin2);
-      var res2 = readers[ri2].decode(bmp2);
-      if (res2) return res2;
-    } catch(e) {}
+  var gray=toGrayscale(imageData);
+  for (var ri2=0;ri2<readers.length;ri2++) {
+    try { var r2=readers[ri2].decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(gray,w,h)))); if(r2) return r2; } catch(e){}
   }
-
-  // Strategy 3: crop center region only
-  var crop = cropCenter(w, h, 0.65);
-  var cropData = ctx.getImageData(crop.x, crop.y, crop.w, crop.h);
-  for (var ri3 = 0; ri3 < readers.length; ri3++) {
-    try {
-      var lum3 = new ZXing.RGBLuminanceSource(cropData.data, crop.w, crop.h);
-      var bin3 = new ZXing.HybridBinarizer(lum3);
-      var bmp3 = new ZXing.BinaryBitmap(bin3);
-      var res3 = readers[ri3].decode(bmp3);
-      if (res3) return res3;
-    } catch(e) {}
+  var cw=Math.floor(w*0.65),ch=Math.floor(h*0.65),cx=Math.floor((w-cw)/2),cy=Math.floor((h-ch)/2);
+  var crop=ctx.getImageData(cx,cy,cw,ch);
+  for (var ri3=0;ri3<readers.length;ri3++) {
+    try { var r3=readers[ri3].decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(crop.data,cw,ch)))); if(r3) return r3; } catch(e){}
   }
-
   return null;
 }
 
@@ -325,20 +268,13 @@ var frameSkip = 0;
 function scanLoop() {
   if (!active) return;
   rafId = requestAnimationFrame(scanLoop);
-
-  // Process every 3rd frame — balance speed vs CPU on mobile
   frameSkip++;
   if (frameSkip % 3 !== 0) return;
-
   if (video.readyState < 2 || video.videoWidth === 0) return;
-
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
   var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   var result = tryDecode(canvas.width, canvas.height, imageData);
-
   if (result) {
     var now = Date.now();
     if (now - lastScan > 1500) {
@@ -348,7 +284,6 @@ function scanLoop() {
   }
 }
 
-// ── Success ──
 var ICONS = { CODE_128:'▌▌',CODE_39:'▐▌',CODE_93:'▐▌',EAN_13:'▏▏▏',EAN_8:'▏▏',UPC_A:'▎▎',UPC_E:'▎',QR_CODE:'⬛',DATA_MATRIX:'▦',AZTEC:'◼',PDF_417:'▬',ITF:'▐▐',CODABAR:'▍' };
 
 function onScan(value, format) {
@@ -366,7 +301,7 @@ function onScan(value, format) {
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type:'barcode', value:value, format:format }));
     var chip = document.getElementById('sent');
-    chip.classList.add('show'); setTimeout(function(){ chip.classList.remove('show'); }, 1600);
+    chip.classList.add('show'); setTimeout(function(){ chip.classList.remove('show'), 1600; });
   }
 }
 
@@ -380,7 +315,8 @@ function toggleTorch() {
   }).catch(function(){});
 }
 
-if (wsInput.value && roomInput.value) connectWS();
+// Auto-connect on load
+connectWS();
 </script>
 </body>
 </html>
