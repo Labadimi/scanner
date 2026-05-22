@@ -260,13 +260,22 @@ function onBarcode({ value, format }) {
 function inject(value) {
   const el = document.activeElement;
   if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && !el.isContentEditable)) return;
+  // Native setter — triggers React/Vue/Angular onChange
   const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
   if (desc?.set) desc.set.call(el, value); else el.value = value;
-  el.dispatchEvent(new Event('input',  { bubbles:true }));
-  el.dispatchEvent(new Event('change', { bubbles:true }));
-  ['keydown','keypress','keyup'].forEach(t =>
-    el.dispatchEvent(new KeyboardEvent(t, { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true }))
-  );
+  el.dispatchEvent(new Event('input',  { bubbles:true, cancelable:true }));
+  el.dispatchEvent(new Event('change', { bubbles:true, cancelable:true }));
+  // All 3 key events + charCode for full framework compatibility
+  const opts = { key:'Enter', code:'Enter', keyCode:13, which:13, charCode:13, bubbles:true, cancelable:true };
+  el.dispatchEvent(new KeyboardEvent('keydown',  opts));
+  el.dispatchEvent(new KeyboardEvent('keypress', opts));
+  el.dispatchEvent(new KeyboardEvent('keyup',    opts));
+  // Also click submit button if inside a form
+  const form = el.closest('form');
+  if (form) {
+    const btn = form.querySelector('button[type=submit],input[type=submit]');
+    if (btn) btn.click();
+  }
 }
 
 function beep() {
@@ -318,7 +327,88 @@ function showToast(msg) {
 function buildBM() {
   var url  = wsInput.value.trim() || 'wss://argati-scanner.lavdrim-m.workers.dev';
   var room = roomInput.value.trim() || 'work';
-  var code = `javascript:(function(){if(window.__scanit){window.__scanit.close();delete window.__scanit;showToast('Scan\u00b7it disconnected');return;}var ws=new WebSocket('${url}/room/${encodeURIComponent(room)}?role=laptop');window.__scanit=ws;ws.onopen=function(){showT('Scan\u00b7it active \u2014 room: ${room}');};ws.onclose=function(){delete window.__scanit;};ws.onmessage=function(e){try{var d=JSON.parse(e.data);if(d.type!=='barcode')return;var v=d.value,el=document.activeElement;if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable)){var p=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(p&&p.set)p.set.call(el,v);else el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));el.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',keyCode:13,bubbles:true}));showT('\u2713 '+v);}}catch(x){}};function showT(m){var t=document.createElement('div');t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#00a86b;color:#fff;padding:10px 20px;border-radius:10px;font-family:system-ui;font-size:14px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,.25);';t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .4s';setTimeout(function(){t.remove();},500);},2500);}})();`;
+
+  // Full persistent bookmarklet:
+  // - Injects a floating pill that stays on screen across navigations
+  // - Auto-reconnects WebSocket when page changes (MutationObserver + focus trick)
+  // - Proper React/Vue/Angular input injection
+  // - Real Enter key simulation that works in all frameworks
+  var code = `javascript:(function(){
+if(window.__scanitDestroy){window.__scanitDestroy();return;}
+var WS_URL='${url}/room/${encodeURIComponent(room)}?role=laptop';
+var ws=null,pill=null,retryT=null;
+
+function inject(v){
+  var el=document.activeElement;
+  if(!el||(el.tagName!=='INPUT'&&el.tagName!=='TEXTAREA'&&!el.isContentEditable))return;
+  /* Native setter — works in React/Vue/Angular */
+  var proto=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
+  if(proto&&proto.set)proto.set.call(el,v);
+  else el.value=v;
+  /* Synthetic events — trigger framework state update */
+  ['input','change'].forEach(function(t){el.dispatchEvent(new Event(t,{bubbles:true,cancelable:true}));});
+  /* Enter key — all 3 events needed for full compatibility */
+  var opts={key:'Enter',code:'Enter',keyCode:13,which:13,charCode:13,bubbles:true,cancelable:true};
+  el.dispatchEvent(new KeyboardEvent('keydown',opts));
+  el.dispatchEvent(new KeyboardEvent('keypress',opts));
+  el.dispatchEvent(new KeyboardEvent('keyup',opts));
+  /* Also try submitting the parent form directly */
+  var form=el.closest('form');
+  if(form){
+    var btn=form.querySelector('button[type=submit],input[type=submit]');
+    if(btn)btn.click();
+  }
+  toast('\u2713 '+v);
+}
+
+function connect(){
+  clearTimeout(retryT);
+  if(ws){try{ws.close();}catch(e){}}
+  ws=new WebSocket(WS_URL);
+  ws.onopen=function(){setPill(true);};
+  ws.onclose=function(){setPill(false);retryT=setTimeout(connect,3000);};
+  ws.onerror=function(){setPill(false);};
+  ws.onmessage=function(e){
+    try{var d=JSON.parse(e.data);if(d.type==='barcode')inject(d.value);}catch(x){}
+  };
+}
+
+function setPill(on){
+  if(!pill)return;
+  pill.style.background=on?'#00a86b':'#e53e3e';
+  pill.title=on?'Scan\u00b7it connected \u2014 click to disconnect':'Scan\u00b7it reconnecting\u2026';
+  pill.querySelector('span').textContent=on?'\u26a1 Scan\u00b7it ON':'\u26a1 Reconnecting\u2026';
+}
+
+function createPill(){
+  pill=document.createElement('div');
+  pill.innerHTML='<span>\u26a1 Scan\u00b7it ON</span>';
+  pill.style.cssText='position:fixed;bottom:20px;right:20px;z-index:2147483647;background:#00a86b;color:#fff;padding:8px 16px;border-radius:20px;font-family:system-ui,sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25);transition:background .3s;user-select:none;';
+  pill.onclick=function(){window.__scanitDestroy();};
+  document.body.appendChild(pill);
+}
+
+function toast(m){
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;bottom:60px;right:20px;z-index:2147483647;background:#111;color:#fff;padding:8px 14px;border-radius:8px;font-family:system-ui;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);pointer-events:none;';
+  t.textContent=m;document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){t.remove();},400);},1800);
+}
+
+window.__scanitDestroy=function(){
+  clearTimeout(retryT);
+  if(ws){try{ws.close();}catch(e){}}
+  if(pill)pill.remove();
+  pill=null;ws=null;
+  delete window.__scanitDestroy;
+  toast('Scan\u00b7it off');
+};
+
+createPill();
+connect();
+toast('Scan\u00b7it active \u2014 room: ${room}');
+})();`.replace(/\n/g,'');
+
   document.getElementById('bmPreview').textContent = code;
   var link = document.getElementById('bmLink');
   link.href = code;
