@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scan·it — Laptop</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f5f5f5;--surface:#fff;--border:#e0e0e0;--border2:#ccc;
+  --green:#00a86b;--green-light:#edfaf4;--green-border:#b2e8d0;
+  --text:#111;--muted:#777;--muted2:#bbb;
+  --red:#e53e3e;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#0d0d0d;--surface:#181818;--border:#272727;--border2:#333;
+  --green:#00e589;--green-light:rgba(0,229,137,.07);--green-border:rgba(0,229,137,.25);
+  --text:#f0f0f0;--muted:#888;--muted2:#444;
+}}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:28px 16px 60px;gap:16px;}
+h1{font-size:22px;font-weight:700;letter-spacing:-.4px;align-self:flex-start;max-width:580px;width:100%;}
+h1 em{color:var(--green);font-style:normal;}
+h1 span{font-size:13px;font-weight:400;color:var(--muted);margin-left:6px;}
+
+.card{width:100%;max-width:580px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:12px;}
+
+/* connect */
+.fields{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.field-row{display:flex;gap:8px;align-items:center;}
+.field-label{font-size:12px;color:var(--muted);width:44px;flex-shrink:0;}
+input[type=text],input[type=url]{flex:1;padding:9px 12px;border:1px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--text);font-size:14px;outline:none;transition:border-color .2s;font-family:inherit;}
+input[type=text]:focus,input[type=url]:focus{border-color:var(--green);}
+#roomInput{font-weight:600;font-family:'SF Mono','Fira Code',monospace;letter-spacing:.04em;}
+.conn-btn{padding:9px 20px;border-radius:9px;border:none;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap;}
+@media(prefers-color-scheme:dark){.conn-btn{color:#000;}}
+.conn-btn:hover{opacity:.85;}
+.conn-btn:active{opacity:.7;}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:2px;}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--muted2);transition:background .3s;flex-shrink:0;}
+.sdot.on{background:var(--green);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.slabel{color:var(--muted);}
+.slabel b{color:var(--text);}
+
+/* last scan */
+.scan-box{border:2px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;min-height:76px;transition:border-color .3s,background .3s;background:var(--bg);}
+.scan-box.flash{border-color:var(--green);background:var(--green-light);}
+.s-icon{width:46px;height:46px;border-radius:9px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;font-family:monospace;flex-shrink:0;}
+.s-body{flex:1;min-width:0;}
+.s-empty{font-size:14px;color:var(--muted);}
+.s-val{font-size:22px;font-weight:700;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
+.s-meta{font-size:12px;color:var(--muted);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;}
+.s-tag{background:var(--border);padding:2px 7px;border-radius:20px;font-weight:500;}
+.copy-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;flex-shrink:0;transition:all .15s;}
+.copy-btn:hover{border-color:var(--green);color:var(--green);}
+
+/* settings */
+.srow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);}
+.srow:last-child{border-bottom:none;padding-bottom:0;}
+.srow:first-child{padding-top:0;}
+.sleft p{font-size:14px;font-weight:500;}
+.sleft small{font-size:12px;color:var(--muted);}
+.toggle{position:relative;width:42px;height:24px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.track{position:absolute;inset:0;border-radius:12px;background:var(--border2);cursor:pointer;transition:background .2s;}
+.toggle input:checked+.track{background:var(--green);}
+.track::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;}
+.toggle input:checked+.track::after{transform:translateX(18px);}
+
+/* log */
+.log{display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;}
+.li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:border-color .15s;}
+.li:hover{border-color:var(--green);}
+.li-icon{font-size:13px;font-family:monospace;flex-shrink:0;}
+.li-val{flex:1;font-size:13px;font-weight:500;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.li-time{font-size:11px;color:var(--muted);white-space:nowrap;}
+.empty{font-size:13px;color:var(--muted);text-align:center;padding:20px 0;}
+
+/* test area */
+.test-input{width:100%;border:2px dashed var(--border2);border-radius:9px;padding:12px;font-size:14px;color:var(--text);background:var(--bg);outline:none;font-family:inherit;}
+.test-input:focus{border-color:var(--green);}
+
+footer{font-size:12px;color:var(--muted2);text-align:center;}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--text);color:var(--bg);padding:9px 18px;border-radius:9px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;pointer-events:none;z-index:999;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<h1>Scan<em>·</em>it <span>Laptop Receiver</span></h1>
+
+<!-- Connect -->
+<div class="card">
+  <div class="card-title">Connection</div>
+  <div class="fields">
+    <div class="field-row">
+      <span class="field-label">Server</span>
+      <input type="url" id="wsInput" placeholder="wss://argati-scanner.lavdrim-m.workers.dev" spellcheck="false" autocomplete="off">
+    </div>
+    <div class="field-row">
+      <span class="field-label">Room</span>
+      <input type="text" id="roomInput" placeholder="work" maxlength="20" spellcheck="false" autocomplete="off">
+      <button class="conn-btn" onclick="connect()">Connect</button>
+    </div>
+  </div>
+  <div class="status">
+    <div class="sdot" id="sdot"></div>
+    <div class="slabel" id="slabel">Not connected</div>
+  </div>
+</div>
+
+<!-- Last scan -->
+<div class="card">
+  <div class="card-title">Last scan</div>
+  <div class="scan-box" id="scanBox">
+    <div class="s-icon" id="sIcon">📷</div>
+    <div class="s-body">
+      <div class="s-empty" id="sEmpty">Waiting for scan…</div>
+      <div class="s-val"  id="sVal"   style="display:none"></div>
+      <div class="s-meta" id="sMeta"  style="display:none"></div>
+    </div>
+    <button class="copy-btn" id="copyBtn" onclick="copyLast()" style="display:none">Copy</button>
+  </div>
+</div>
+
+<!-- Test area -->
+<div class="card">
+  <div class="card-title">Test — click here then scan on your phone</div>
+  <input class="test-input" id="testInput" placeholder="Click this field, then scan a barcode on your phone…" type="text">
+</div>
+
+<!-- Settings -->
+<div class="card">
+  <div class="card-title">Injection settings</div>
+  <div class="srow">
+    <div class="sleft"><p>Sound beep</p><small>Plays on every received scan</small></div>
+    <label class="toggle"><input type="checkbox" id="soundToggle" checked><div class="track"></div></label>
+  </div>
+  <div class="srow">
+    <div class="sleft"><p>Toast notification</p><small>Brief popup showing scanned value</small></div>
+    <label class="toggle"><input type="checkbox" id="toastToggle" checked><div class="track"></div></label>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="card">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+    Scan log
+    <button onclick="clearLog()" style="font-size:12px;color:var(--red);background:none;border:none;cursor:pointer;font-weight:500;">Clear</button>
+  </div>
+  <div class="log" id="logList"><div class="empty">No scans yet</div></div>
+</div>
+
+<!-- Bookmarklet -->
+<div class="card">
+  <div class="card-title">Bookmarklet — inject on any site</div>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Drag the button below to your bookmarks bar. Click it on <strong>any page</strong> to activate scanner injection — without keeping this tab open.</p>
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:11px 13px;font-size:11px;font-family:'SF Mono','Fira Code',monospace;color:var(--muted);word-break:break-all;max-height:68px;overflow-y:auto;margin-bottom:10px;" id="bmPreview">Generating…</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <a id="bmLink" href="#" draggable="true"
+      style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:9px;background:var(--green);color:#000;font-size:14px;font-weight:700;text-decoration:none;cursor:grab;">
+      ⚡ Drag to bookmarks bar
+    </a>
+    <button onclick="copyBM()" style="padding:10px 16px;border-radius:9px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">Copy code</button>
+  </div>
+  <p style="font-size:12px;color:var(--muted);margin-top:10px;">⚠️ If drag doesn't work in your browser, click <strong>Copy code</strong> → create a new bookmark manually → paste as the URL.</p>
+</div>
+
+<footer>Scan·it local — <a href="#" style="color:var(--muted);">localhost test mode</a></footer>
+<div class="toast" id="toast"></div>
+
+<script>
+const WS_KEY   = 'scanit_ws_laptop';
+const ROOM_KEY = 'scanit_room_laptop';
+const LOG_KEY  = 'scanit_log_laptop';
+
+const wsInput   = document.getElementById('wsInput');
+const roomInput = document.getElementById('roomInput');
+
+wsInput.value   = localStorage.getItem(WS_KEY)   || 'wss://argati-scanner.lavdrim-m.workers.dev';
+roomInput.value = localStorage.getItem(ROOM_KEY) || 'work';
+
+['soundToggle','toastToggle'].forEach(id => {
+  const el = document.getElementById(id);
+  const v  = localStorage.getItem(id);
+  if (v !== null) el.checked = v === 'true';
+  el.addEventListener('change', () => localStorage.setItem(id, el.checked));
+});
+
+wsInput.addEventListener('change',   () => localStorage.setItem(WS_KEY,   wsInput.value.trim()));
+roomInput.addEventListener('input',  () => { roomInput.value = roomInput.value.replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase(); });
+roomInput.addEventListener('change', () => localStorage.setItem(ROOM_KEY, roomInput.value.trim()));
+roomInput.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
+
+let ws = null, wsRetry = null, lastVal = null;
+let log = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+let audioCtx = null;
+
+function connect() {
+  const url  = wsInput.value.trim();
+  const room = roomInput.value.trim();
+  if (!url || !room) { alert('Enter the server URL and room name.'); return; }
+  localStorage.setItem(WS_KEY, url);
+  localStorage.setItem(ROOM_KEY, room);
+  clearTimeout(wsRetry);
+  if (ws) { try { ws.close(); } catch {} }
+  setStatus('connecting', `Connecting…`);
+  ws = new WebSocket(`${url}/room/${encodeURIComponent(room)}?role=laptop`);
+  ws.onopen  = () => setStatus('on', `Listening in room <b>${room}</b> — click any input then scan`);
+  ws.onclose = () => { setStatus('off', 'Disconnected — retrying…'); wsRetry = setTimeout(connect, 3500); };
+  ws.onerror = () => setStatus('off', 'Connection error');
+  ws.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'barcode') onBarcode(d);
+      if (d.type === 'peer_joined' && d.role === 'scanner') setStatus('on', `Scanner connected · room <b>${room}</b>`);
+    } catch {}
+  };
+  setInterval(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({type:'ping'})); }, 25000);
+}
+
+function setStatus(state, html) {
+  document.getElementById('sdot').className = 'sdot' + (state === 'on' ? ' on' : '');
+  document.getElementById('slabel').innerHTML = html;
+}
+
+// ── Barcode received ──
+const ICONS = { QR_CODE:'⬛',qr_code:'⬛',DATA_MATRIX:'▦',data_matrix:'▦',CODE_128:'▌▌',code_128:'▌▌',CODE_39:'▐▌',code_39:'▐▌',EAN_13:'▏▏▏',ean_13:'▏▏▏',EAN_8:'▏▏',ean_8:'▏▏',UPC_A:'▎▎',upc_a:'▎▎',PDF_417:'▬',pdf417:'▬',AZTEC:'◼',aztec:'◼' };
+
+function onBarcode({ value, format }) {
+  lastVal = value;
+  const icon = ICONS[format] || '📦';
+
+  // Update display
+  document.getElementById('sIcon').textContent = icon;
+  document.getElementById('sEmpty').style.display = 'none';
+  document.getElementById('sVal').style.display = 'block';
+  document.getElementById('sVal').textContent = value;
+  document.getElementById('sMeta').style.display = 'flex';
+  document.getElementById('sMeta').innerHTML = `<span class="s-tag">${format||'Unknown'}</span><span>${new Date().toLocaleTimeString()}</span>`;
+  document.getElementById('copyBtn').style.display = 'block';
+  const box = document.getElementById('scanBox');
+  box.classList.add('flash'); setTimeout(() => box.classList.remove('flash'), 500);
+
+  // Inject
+  inject(value);
+
+  // Sound
+  if (document.getElementById('soundToggle').checked) beep();
+
+  // Toast
+  if (document.getElementById('toastToggle').checked) showToast(`✓  ${value}`);
+
+  // Log
+  addLog(value, format, icon);
+}
+
+function inject(value) {
+  const el = document.activeElement;
+  if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA' && !el.isContentEditable)) return;
+  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  if (desc?.set) desc.set.call(el, value); else el.value = value;
+  el.dispatchEvent(new Event('input',  { bubbles:true }));
+  el.dispatchEvent(new Event('change', { bubbles:true }));
+  ['keydown','keypress','keyup'].forEach(t =>
+    el.dispatchEvent(new KeyboardEvent(t, { key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true }))
+  );
+}
+
+function beep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.18, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    o.start(); o.stop(audioCtx.currentTime + 0.12);
+  } catch {}
+}
+
+function copyLast() {
+  if (lastVal) navigator.clipboard.writeText(lastVal).then(() => showToast('Copied!'));
+}
+
+function addLog(value, format, icon) {
+  log.unshift({ value, format, icon, ts: Date.now() });
+  if (log.length > 100) log.pop();
+  localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  renderLog();
+}
+
+function renderLog() {
+  const list = document.getElementById('logList');
+  if (!log.length) { list.innerHTML = '<div class="empty">No scans yet</div>'; return; }
+  list.innerHTML = log.map(h => {
+    const t = new Date(h.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    return `<div class="li" onclick="navigator.clipboard.writeText(${JSON.stringify(h.value)}).then(()=>showToast('Copied!'))">
+      <div class="li-icon">${h.icon||'📦'}</div>
+      <div class="li-val">${esc(h.value)}</div>
+      <div class="li-time">${h.format||''} · ${t}</div>
+    </div>`;
+  }).join('');
+}
+
+function clearLog() { log=[]; localStorage.removeItem(LOG_KEY); renderLog(); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── Bookmarklet ──
+function buildBM() {
+  var url  = wsInput.value.trim() || 'wss://argati-scanner.lavdrim-m.workers.dev';
+  var room = roomInput.value.trim() || 'work';
+  var code = `javascript:(function(){if(window.__scanit){window.__scanit.close();delete window.__scanit;showToast('Scan\u00b7it disconnected');return;}var ws=new WebSocket('${url}/room/${encodeURIComponent(room)}?role=laptop');window.__scanit=ws;ws.onopen=function(){showT('Scan\u00b7it active \u2014 room: ${room}');};ws.onclose=function(){delete window.__scanit;};ws.onmessage=function(e){try{var d=JSON.parse(e.data);if(d.type!=='barcode')return;var v=d.value,el=document.activeElement;if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable)){var p=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');if(p&&p.set)p.set.call(el,v);else el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true}));el.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',keyCode:13,bubbles:true}));showT('\u2713 '+v);}}catch(x){}};function showT(m){var t=document.createElement('div');t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#00a86b;color:#fff;padding:10px 20px;border-radius:10px;font-family:system-ui;font-size:14px;font-weight:600;z-index:2147483647;box-shadow:0 4px 16px rgba(0,0,0,.25);';t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .4s';setTimeout(function(){t.remove();},500);},2500);}})();`;
+  document.getElementById('bmPreview').textContent = code;
+  var link = document.getElementById('bmLink');
+  link.href = code;
+}
+
+function copyBM() {
+  var code = document.getElementById('bmLink').href;
+  navigator.clipboard.writeText(code).then(function(){ showToast('Bookmarklet code copied!'); });
+}
+
+buildBM();
+wsInput.addEventListener('change', buildBM);
+roomInput.addEventListener('change', buildBM);
+wsInput.addEventListener('input', buildBM);
+roomInput.addEventListener('input', buildBM);
+
+renderLog();
+if (wsInput.value && roomInput.value) connect();
+</script>
+</body>
+</html>

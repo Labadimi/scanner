@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#000000">
+<title>Scan·it</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#000;--surface:#111;--surface2:#1c1c1c;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.15);
+  --green:#00ff87;--green-dim:rgba(0,255,135,0.12);
+  --text:#fff;--muted:rgba(255,255,255,0.4);
+  --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;overflow:hidden;}
+.app{height:100dvh;display:flex;flex-direction:column;padding-top:var(--safe-top);padding-bottom:var(--safe-bot);}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px;flex-shrink:0;}
+.wordmark{font-size:18px;font-weight:700;letter-spacing:-.4px;}
+.wordmark em{color:var(--green);font-style:normal;}
+.badge{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:20px;border:1px solid var(--border2);background:var(--surface);font-size:12px;font-weight:500;color:var(--muted);transition:all .3s;}
+.badge.on{border-color:var(--green);color:var(--green);background:var(--green-dim);}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5;}
+.badge.on .dot{opacity:1;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.ws-row{display:flex;gap:8px;align-items:center;padding:0 18px 6px;flex-shrink:0;}
+.ws-input{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:7px 11px;color:var(--text);font-size:12px;font-family:'SF Mono','Fira Code',monospace;outline:none;min-width:0;}
+.ws-input:focus{border-color:var(--green);}
+
+.room-row{display:flex;gap:8px;align-items:center;padding:0 18px 10px;flex-shrink:0;}
+.room-label{font-size:12px;color:var(--muted);white-space:nowrap;}
+.room-input{flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:9px;padding:8px 11px;color:var(--text);font-size:14px;font-weight:600;font-family:'SF Mono','Fira Code',monospace;outline:none;min-width:0;}
+.room-input:focus{border-color:var(--green);}
+.room-btn{padding:8px 14px;border-radius:9px;border:1px solid var(--green);background:var(--green);color:#000;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.room-btn:active{opacity:.8;}
+
+.vf-wrap{flex:1;position:relative;overflow:hidden;min-height:0;}
+#video{width:100%;height:100%;object-fit:cover;display:block;}
+#canvas{display:none;}
+#debugCanvas{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;}
+.vf-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.scan-box{position:relative;width:min(72vw,260px);aspect-ratio:1;}
+.scan-box::before,.scan-box::after,.scan-box .c,.scan-box .d{content:'';position:absolute;width:26px;height:26px;border:2.5px solid var(--green);}
+.scan-box::before{top:0;left:0;border-right:none;border-bottom:none;border-radius:3px 0 0 0;}
+.scan-box::after{top:0;right:0;border-left:none;border-bottom:none;border-radius:0 3px 0 0;}
+.scan-box .c{bottom:0;left:0;border-right:none;border-top:none;border-radius:0 0 0 3px;}
+.scan-box .d{bottom:0;right:0;border-left:none;border-top:none;border-radius:0 0 3px 0;}
+.scan-line{position:absolute;left:3px;right:3px;height:2px;background:linear-gradient(90deg,transparent,var(--green),transparent);top:3px;animation:scanline 2s ease-in-out infinite;display:none;}
+.scanning .scan-line{display:block;}
+@keyframes scanline{0%{top:3px;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:calc(100% - 5px);opacity:0}}
+.flash{position:absolute;inset:0;background:rgba(0,255,135,.25);opacity:0;pointer-events:none;transition:opacity .05s;}
+.flash.show{opacity:1;}
+.placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--surface);}
+.placeholder svg{width:52px;height:52px;stroke:var(--muted);fill:none;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round;}
+.placeholder p{font-size:14px;color:var(--muted);font-weight:500;}
+.scan-status{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;font-weight:500;color:rgba(255,255,255,.8);pointer-events:none;padding:0 20px;text-shadow:0 1px 3px rgba(0,0,0,.8);}
+
+.bottom{flex-shrink:0;padding:12px 18px 14px;display:flex;flex-direction:column;gap:10px;}
+.result{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:11px 14px;min-height:56px;transition:border-color .3s;}
+.result.lit{border-color:var(--green);}
+.r-icon{width:36px;height:36px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;font-family:monospace;}
+.r-body{flex:1;min-width:0;}
+.r-label{font-size:11px;color:var(--muted);margin-bottom:1px;}
+.r-val{font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.r-val.empty{color:var(--muted);font-weight:400;font-size:13px;}
+.r-fmt{font-size:11px;color:var(--muted);}
+.sent{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:var(--green-dim);color:var(--green);border:1px solid rgba(0,255,135,.3);opacity:0;transform:scale(.9);transition:all .2s;white-space:nowrap;flex-shrink:0;}
+.sent.show{opacity:1;transform:scale(1);}
+
+.actions{display:flex;gap:8px;}
+.btn{flex:1;padding:14px 8px;border-radius:13px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.btn:active{transform:scale(.96);}
+.btn.primary{background:var(--green);color:#000;border-color:var(--green);}
+.btn.primary svg{stroke:#000;}
+.btn.stop{border-color:rgba(255,70,70,.4);color:#ff4646;}
+.btn.torch-on{border-color:var(--green);color:var(--green);}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="wordmark">Scan<em>·</em>it</div>
+    <div class="badge" id="badge"><div class="dot"></div><span id="badgeLabel">Offline</span></div>
+  </div>
+
+  <div class="ws-row">
+    <input class="ws-input" id="wsInput" placeholder="wss://argati-scanner.lavdrim-m.workers.dev" spellcheck="false" autocomplete="off">
+  </div>
+
+  <div class="room-row">
+    <span class="room-label">Room</span>
+    <input class="room-input" id="roomInput" maxlength="20" spellcheck="false" autocomplete="off" placeholder="work">
+    <button class="room-btn" onclick="connectWS()">Connect</button>
+  </div>
+
+  <div class="vf-wrap">
+    <video id="video" autoplay muted playsinline webkit-playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div class="vf-overlay">
+      <div class="scan-box" id="scanBox">
+        <span class="c"></span><span class="d"></span>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+    <div class="flash" id="flash"></div>
+    <div class="placeholder" id="placeholder">
+      <svg viewBox="0 0 24 24"><path d="M2 7V4a1 1 0 0 1 1-1h3M2 17v3a1 1 0 0 0 1 1h3M22 7V4a1 1 0 0 0-1-1h-3M22 17v3a1 1 0 0 1-1 1h-3"/><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+      <p>Tap Start Camera</p>
+    </div>
+    <div class="scan-status" id="scanStatus"></div>
+  </div>
+
+  <div class="bottom">
+    <div class="result" id="result">
+      <div class="r-icon" id="rIcon">📷</div>
+      <div class="r-body">
+        <div class="r-label">Last scan</div>
+        <div class="r-val empty" id="rVal">Nothing yet</div>
+        <div class="r-fmt" id="rFmt"></div>
+      </div>
+      <div class="sent" id="sent">✓ Sent</div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="startBtn" onclick="toggleCam()">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/></svg>
+        Start Camera
+      </button>
+      <button class="btn" id="torchBtn" onclick="toggleTorch()" disabled>
+        <svg viewBox="0 0 24 24"><path d="M13 2L4.09 12.26c-.36.43-.07 1.06.49 1.06H11v8l8.91-10.26c.36-.43.07-1.06-.49-1.06H13V2z"/></svg>
+        Flash
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
+<script>
+var WS_KEY   = 'scanit_ws';
+var ROOM_KEY = 'scanit_room';
+
+var wsInput   = document.getElementById('wsInput');
+var roomInput = document.getElementById('roomInput');
+wsInput.value   = localStorage.getItem(WS_KEY)   || 'wss://argati-scanner.lavdrim-m.workers.dev';
+roomInput.value = localStorage.getItem(ROOM_KEY) || 'work';
+wsInput.addEventListener('change',   function(){ localStorage.setItem(WS_KEY, wsInput.value.trim()); });
+roomInput.addEventListener('change', function(){ localStorage.setItem(ROOM_KEY, roomInput.value.trim()); });
+roomInput.addEventListener('input',  function(){ roomInput.value = roomInput.value.replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase(); });
+
+var ws = null, wsRetry = null;
+var active = false, rafId = null;
+var torchTrack = null, torchOn = false;
+var video  = document.getElementById('video');
+var canvas = document.getElementById('canvas');
+var ctx    = canvas.getContext('2d', { willReadFrequently: true });
+var lastScan = 0;
+var readers = [];
+
+// ── WebSocket ──
+function connectWS() {
+  var url  = wsInput.value.trim();
+  var room = roomInput.value.trim();
+  if (!url || !room) { alert('Enter WS URL and room.'); return; }
+  localStorage.setItem(WS_KEY, url);
+  localStorage.setItem(ROOM_KEY, room);
+  if (ws) { try { ws.close(); } catch(e){} }
+  ws = new WebSocket(url + '/room/' + encodeURIComponent(room) + '?role=scanner');
+  ws.onopen  = function(){ setConn(true); };
+  ws.onclose = function(){ setConn(false); wsRetry = setTimeout(connectWS, 3500); };
+  ws.onerror = function(){ setConn(false); };
+  ws.onmessage = function(e){ try { var d=JSON.parse(e.data); if(d.peers!==undefined) setConn(true,d.peers); } catch(ex){} };
+  setInterval(function(){ if(ws&&ws.readyState===1) ws.send(JSON.stringify({type:'ping'})); }, 25000);
+}
+
+function setConn(on, peers) {
+  var b = document.getElementById('badge'), l = document.getElementById('badgeLabel');
+  b.className = 'badge'+(on?' on':'');
+  l.textContent = on ? ((peers||1)-1>0 ? ((peers-1)+' laptop') : 'Connected') : 'Offline';
+}
+
+// ── Build readers — multiple strategies ──
+function buildReaders() {
+  readers = [];
+  var formats = [
+    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A,  ZXing.BarcodeFormat.UPC_E,
+    ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+    ZXing.BarcodeFormat.CODE_93,  ZXing.BarcodeFormat.ITF,
+    ZXing.BarcodeFormat.CODABAR,  ZXing.BarcodeFormat.DATA_MATRIX,
+    ZXing.BarcodeFormat.QR_CODE,  ZXing.BarcodeFormat.PDF_417,
+    ZXing.BarcodeFormat.AZTEC,    ZXing.BarcodeFormat.RSS_14,
+  ];
+
+  // Reader 1: TRY_HARDER on
+  var h1 = new Map();
+  h1.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+  h1.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  readers.push(new ZXing.MultiFormatReader(h1));
+
+  // Reader 2: TRY_HARDER off (faster, sometimes catches what harder misses)
+  var h2 = new Map();
+  h2.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+  h2.set(ZXing.DecodeHintType.TRY_HARDER, false);
+  readers.push(new ZXing.MultiFormatReader(h2));
+}
+
+// ── Convert RGBA ImageData to grayscale Uint8ClampedArray ──
+// This is the fix: ZXing RGBLuminanceSource expects R,G,B,A packed
+// but iOS sometimes gives different color profiles. We normalise manually.
+function toGrayscale(imageData) {
+  var src  = imageData.data;
+  var len  = src.length / 4;
+  var gray = new Uint8ClampedArray(len);
+  for (var i = 0; i < len; i++) {
+    var r = src[i*4];
+    var g = src[i*4+1];
+    var b = src[i*4+2];
+    // Luminance formula (perceptual)
+    gray[i] = (r * 77 + g * 150 + b * 29) >> 8;
+  }
+  return gray;
+}
+
+// ── Crop center of frame — barcodes are usually in the middle ──
+function cropCenter(fullW, fullH, ratio) {
+  ratio = ratio || 0.7;
+  var cw = Math.floor(fullW * ratio);
+  var ch = Math.floor(fullH * ratio);
+  var cx = Math.floor((fullW - cw) / 2);
+  var cy = Math.floor((fullH - ch) / 2);
+  return { x: cx, y: cy, w: cw, h: ch };
+}
+
+// ── Try decode with multiple strategies ──
+function tryDecode(w, h, imageData) {
+  // Strategy 1: full frame, RGBLuminanceSource
+  for (var ri = 0; ri < readers.length; ri++) {
+    try {
+      var lum1 = new ZXing.RGBLuminanceSource(imageData.data, w, h);
+      var bin1 = new ZXing.HybridBinarizer(lum1);
+      var bmp1 = new ZXing.BinaryBitmap(bin1);
+      var res1 = readers[ri].decode(bmp1);
+      if (res1) return res1;
+    } catch(e) {}
+  }
+
+  // Strategy 2: grayscale conversion, full frame
+  var gray = toGrayscale(imageData);
+  for (var ri2 = 0; ri2 < readers.length; ri2++) {
+    try {
+      var lum2 = new ZXing.RGBLuminanceSource(gray, w, h);
+      var bin2 = new ZXing.HybridBinarizer(lum2);
+      var bmp2 = new ZXing.BinaryBitmap(bin2);
+      var res2 = readers[ri2].decode(bmp2);
+      if (res2) return res2;
+    } catch(e) {}
+  }
+
+  // Strategy 3: crop center region only
+  var crop = cropCenter(w, h, 0.65);
+  var cropData = ctx.getImageData(crop.x, crop.y, crop.w, crop.h);
+  for (var ri3 = 0; ri3 < readers.length; ri3++) {
+    try {
+      var lum3 = new ZXing.RGBLuminanceSource(cropData.data, crop.w, crop.h);
+      var bin3 = new ZXing.HybridBinarizer(lum3);
+      var bmp3 = new ZXing.BinaryBitmap(bin3);
+      var res3 = readers[ri3].decode(bmp3);
+      if (res3) return res3;
+    } catch(e) {}
+  }
+
+  return null;
+}
+
+// ── Camera ──
+function toggleCam() { active ? stopCam() : startCam(); }
+
+function startCam() {
+  setStatus('Starting camera…');
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false,
+  }).then(function(stream) {
+    video.srcObject = stream;
+    video.onloadedmetadata = function() {
+      video.play().then(function() {
+        torchTrack = stream.getVideoTracks()[0];
+        var caps = torchTrack.getCapabilities ? torchTrack.getCapabilities() : {};
+        document.getElementById('torchBtn').disabled = !caps.torch;
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('scanBox').classList.add('scanning');
+        var btn = document.getElementById('startBtn');
+        btn.className = 'btn stop';
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop';
+        buildReaders();
+        active = true;
+        setStatus('Point at barcode…');
+        scanLoop();
+        connectWS();
+      });
+    };
+  }).catch(function(e) { alert('Camera: ' + e.message); });
+}
+
+function stopCam() {
+  active = false;
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+  if (video.srcObject) { video.srcObject.getTracks().forEach(function(t){ t.stop(); }); video.srcObject = null; }
+  torchTrack = null; torchOn = false;
+  document.getElementById('placeholder').style.display = 'flex';
+  document.getElementById('scanBox').classList.remove('scanning');
+  document.getElementById('torchBtn').disabled = true;
+  setStatus('');
+  var btn = document.getElementById('startBtn');
+  btn.className = 'btn primary';
+  btn.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/></svg>Start Camera';
+}
+
+var frameSkip = 0;
+function scanLoop() {
+  if (!active) return;
+  rafId = requestAnimationFrame(scanLoop);
+
+  // Process every 3rd frame — balance speed vs CPU on mobile
+  frameSkip++;
+  if (frameSkip % 3 !== 0) return;
+
+  if (video.readyState < 2 || video.videoWidth === 0) return;
+
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  var result = tryDecode(canvas.width, canvas.height, imageData);
+
+  if (result) {
+    var now = Date.now();
+    if (now - lastScan > 1500) {
+      lastScan = now;
+      onScan(result.getText(), result.getBarcodeFormat ? result.getBarcodeFormat().toString() : 'UNKNOWN');
+    }
+  }
+}
+
+// ── Success ──
+var ICONS = { CODE_128:'▌▌',CODE_39:'▐▌',CODE_93:'▐▌',EAN_13:'▏▏▏',EAN_8:'▏▏',UPC_A:'▎▎',UPC_E:'▎',QR_CODE:'⬛',DATA_MATRIX:'▦',AZTEC:'◼',PDF_417:'▬',ITF:'▐▐',CODABAR:'▍' };
+
+function onScan(value, format) {
+  navigator.vibrate && navigator.vibrate([60,30,60]);
+  var fl = document.getElementById('flash');
+  fl.classList.add('show'); setTimeout(function(){ fl.classList.remove('show'); }, 120);
+  var icon = ICONS[format] || '📦';
+  document.getElementById('rIcon').textContent = icon;
+  document.getElementById('rVal').textContent  = value;
+  document.getElementById('rVal').className    = 'r-val';
+  document.getElementById('rFmt').textContent  = format;
+  var res = document.getElementById('result');
+  res.classList.add('lit'); setTimeout(function(){ res.classList.remove('lit'); }, 1000);
+  setStatus('✓  ' + value);
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type:'barcode', value:value, format:format }));
+    var chip = document.getElementById('sent');
+    chip.classList.add('show'); setTimeout(function(){ chip.classList.remove('show'); }, 1600);
+  }
+}
+
+function setStatus(msg) { document.getElementById('scanStatus').textContent = msg; }
+
+function toggleTorch() {
+  if (!torchTrack) return;
+  torchOn = !torchOn;
+  torchTrack.applyConstraints({ advanced:[{ torch:torchOn }] }).then(function(){
+    document.getElementById('torchBtn').className = torchOn ? 'btn torch-on' : 'btn';
+  }).catch(function(){});
+}
+
+if (wsInput.value && roomInput.value) connectWS();
+</script>
+</body>
+</html>
